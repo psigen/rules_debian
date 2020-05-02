@@ -1,32 +1,12 @@
-# Prerequisites
-*.d
+# Created by https://www.gitignore.io/api/bazel
+# Edit at https://www.gitignore.io/?templates=bazel
 
-# Compiled Object files
-*.slo
-*.lo
-*.o
-*.obj
+### Bazel ###
+# gitignore template for Bazel build system
+# website: https://bazel.build/
 
-# Precompiled Headers
-*.gch
-*.pch
+# Ignore all bazel-* symlinks. There is no full list since this can change
+# based on the name of the directory bazel is cloned into.
+/bazel-*
 
-# Compiled Dynamic libraries
-*.so
-*.dylib
-*.dll
-
-# Fortran module files
-*.mod
-*.smod
-
-# Compiled Static libraries
-*.lai
-*.la
-*.a
-*.lib
-
-# Executables
-*.exe
-*.out
-*.app
+# End of https://www.gitignore.io/api/bazel
