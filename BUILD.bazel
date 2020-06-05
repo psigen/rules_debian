@@ -1,0 +1,4 @@
+sh_binary(
+    name = "download_debs",
+    srcs = ["download_debs.sh"],
+)
