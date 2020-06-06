@@ -36,10 +36,11 @@ def _deb_archive_impl(ctx):
     # Convert each package into a repository rule?
     # Export cc_library for each package.
 
-    # TODO: autogenerate some useful debug code in here.
+    # Create a header for the buildfile.
+    # Other content will be appended to this from the individual packages.
     buildfile = """
-    # Buildfile for deb.archive rule.
-    """
+    # Buildfile for '{name}' deb_archive.
+    """.format(name = ctx.name)
 
     # Create repository rules for each package.
     for package_name, package_version in ctx.attr.packages.items():
@@ -54,19 +55,33 @@ def _deb_archive_impl(ctx):
             ["apt-get", "-qq", "install", "--reinstall", "--print-uris", package_name],
         )
         if uri_result.return_code:
-            fail("Unable to resolve package URI for {}".format(package_name))
+            fail("Unable to resolve package URI for '{}'".format(package_name))
 
-        # Extract just a list of URIs and from the result.
+        # Extract a list of URIs from the result.
         uris = [uri.split(" ")[0].replace("'", "") for uri in uri_result.stdout.splitlines()]
-        print(uris)
 
         for uri in uris:
-            ctx.download(uri, package_name, sha256 = package_sha256)
+            package_deb = "{}.deb".format(package_name)
+            print("Downloading '{}' from URI: {}".format(package_deb, uri))
+
+            download_result = ctx.download(uri, package_deb, sha256 = package_sha256)
+            if not download_result.success:
+                fail("Failed to download deb '{}'".format(package_deb))
+
+            unpack_result = ctx.execute(
+                ["ar", "x", package_deb, "data.tar.xz"],
+            )
+            if unpack_result.return_code:
+                fail("Unable to unpack 'data.tar.xz' from deb '{}'".format(package_deb))
+
+            extract_result = ctx.extract("data.tar.xz", output = "", stripPrefix = "")
 
         # Add the content of these packages to a library directive.
         buildfile += """
 cc_library(
     name = "{package_name}",
+    hdrs = glob(["usr/include/**/*"]),
+    srcs = glob(["usr/lib/**/*"]),
     visibility = ["//visibility:public"],
 )
         """.format(package_name = package_name)
