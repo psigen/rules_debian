@@ -2,7 +2,7 @@
 Repository rules for interacting with debian repositories.
 """
 
-def get_package_sha256(ctx, package_name, package_version = None):
+def _get_package_sha256(ctx, package_name, package_version = None):
     """
     Get the SHA256 hash for a given package.
 
@@ -94,10 +94,10 @@ def _deb_archive_impl(ctx):
 
         for uri in uris:
             # Construct a bunch of names and paths from each package URI.
-            uri_deb = uri.rsplit("/", 1)[1]
-            uri_name, uri_version, arch = uri_deb.split("_")
-            uri_sha256 = get_package_sha256(ctx, uri_name, uri_version)
-            uri_deb_path = "{}/{}".format(package_name, uri_deb)
+            uri_filename = uri.rsplit("/", 1)[1]
+            uri_name, uri_version, arch = uri_filename.split("_")
+            uri_sha256 = _get_package_sha256(ctx, uri_name, uri_version)
+            uri_deb_path = "{}/{}".format(package_name, uri_filename)
             uri_data_path = "{}/{}".format(package_name, "data.tar.xz")
 
             # Download the actual debian file from the APT repository.
@@ -107,11 +107,11 @@ def _deb_archive_impl(ctx):
 
             # Unpack the data component of the debian file.
             unpack_result = ctx.execute(
-                ["ar", "x", uri_deb, "data.tar.xz"],
+                ["ar", "x", uri_filename, "data.tar.xz"],
                 working_directory = package_name,
             )
             if unpack_result.return_code:
-                fail("Unable to unpack 'data.tar.xz' from deb '{}'".format(uri_deb))
+                fail("Unable to unpack 'data.tar.xz' from deb '{}'".format(uri_filename))
 
             # Extract the data component into the local directory.
             extract_result = ctx.extract(uri_data_path, output = package_name, stripPrefix = "")
