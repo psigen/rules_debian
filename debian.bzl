@@ -1,5 +1,5 @@
-DEB_ARCHIVE_BUILDFILE = """
-cc_library
+"""
+Repository rules for interacting with debian repositories.
 """
 
 def get_package_sha256(ctx, package_name, package_version = None):
@@ -44,6 +44,7 @@ def compute_package_dependency_tree(ctx, packages):
     Returns:
         A map from package name to list of packages that are required.
     """
+    fail("Not yet implemented.")
     dependency_tree = {}
 
     for package_name, package_version in packages.items():
@@ -147,34 +148,4 @@ deb_archive = repository_rule(
         "strict_visibility": attr.bool(default = False),
     },
     doc = "Makes available a set of debian packages for use in builds.",
-)
-
-def _deb_package_impl(ctx):
-    """
-    Make a single deb package available from an APT repository.
-    """
-    package = ctx.attr.package
-    package_sha256 = get_package_sha256(ctx, package)
-
-    # Use APT tooling to fetch a list of installation URIs.
-    ctx.report_progress("Fetching URI for %s" % package)
-    uri_result = ctx.execute(
-        ["apt-get", "-qq", "install", "--reinstall", "--print-uris", package],
-    )
-    if uri_result.return_code:
-        fail("Unable to resolve package URI for %s" % package)
-
-    # Extract just a list of URIs and from the result.
-    uris = [uri.split(" ")[0].replace("'", "") for uri in uri_result.stdout.splitlines()]
-    print(uris)
-
-    for uri in uris:
-        ctx.download(uri, package, sha256 = package_sha256)
-
-deb_package = repository_rule(
-    implementation = _deb_package_impl,
-    attrs = {
-        "md5sum": attr.string(default = ""),
-    },
-    doc = "Make available a single debian package.",
 )
