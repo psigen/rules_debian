@@ -17,6 +17,6 @@ load("//:debian.bzl", "deb_archive")
 deb_archive(
     name = "org_boost",
     packages = {
-        "libboost-dev": "*",
+        "libboost-system-dev": "*",
     },
 )
