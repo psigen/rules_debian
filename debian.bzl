@@ -26,7 +26,6 @@ def _get_package_sha256(ctx, package_name, package_version = None):
     package_query = package_name if not package_version else "{}={}".format(package_name, package_version)
 
     # Use APT cache to get package information.
-    ctx.report_progress("Fetching cache information for {}".format(package_query))
     cache_result = ctx.execute(
         ["apt-cache", "show", "--no-all-versions", package_query],
     )
@@ -39,6 +38,81 @@ def _get_package_sha256(ctx, package_name, package_version = None):
             return line.split(" ")[1]
 
     fail("Unable to find a package SHA256 for {}".format(package_query))
+
+def _get_control_fields(control):
+    """
+    Gets a dict of field entries from a debian control file.
+
+    References:
+        https://www.debian.org/doc/debian-policy/ch-controlfields.html#s-controlsyntax
+    Args:
+        control: the string content of a debian control file.
+    Returns:
+        a dict containing the field entries from the control file.
+    """
+    fields = {}
+
+    field_name = None
+    field_content = None
+
+    for idx, line in enumerate(control.splitlines()):
+        # Ignore comment lines as per control-file spec.
+        if line.startswith("#"):
+            continue
+
+        # If the field starts with whitespace, it is a folded or multiline field.
+        # Add it to the content of the ongoing field or error if there is none.
+        if line.startswith(" ") or line.startswith("\t"):
+            if not field_name:
+                fail("Unexpected folded line in control file: line {}".format(idx))
+            field_content += line
+            continue
+
+        # If this is a new field, finish the previous field before starting this one.
+        if field_name:
+            fields[field_name] = field_content
+
+        # If this is a blank line, move to the next one.
+        if not line.strip():
+            continue
+
+        # Start storing the content of the new field.
+        field_name, field_content = line.split(":", 1)
+
+    return fields
+
+def _get_control_depends(control):
+    """
+    Gets the package names of the 'Depends:' directive in a debian control file.
+
+    References:
+        https://www.debian.org/doc/debian-policy/ch-controlfields.html#s-controlsyntax
+        https://www.debian.org/doc/debian-policy/ch-relationships.html#declaring-relationships-between-packages
+
+    Args:
+        control: the string content of a debian control file.
+    Returns:
+        A list of package names from the control file Depends directive.
+    """
+    depends = []
+    fields = _get_control_fields(control)
+
+    for entry in [fields.get("Depends", None), fields.get("Pre-Depends", None)]:
+        # Skip the fields if they were empty.
+        if not entry:
+            continue
+
+        # Remove newlines, these are 'folded' fields so newlines are ignored.
+        line = entry.replace("\n", "").replace("\r", "")
+
+        # Move through each section extracting the packages names.
+        for section in entry.split(","):
+            for alternative in section.split("|"):
+                depend = alternative.strip().split(" ", 1)[0]
+                if depend not in depends:
+                    depends.append(depend)
+
+    return depends
 
 def _get_package_dependencies(ctx, package_name, package_version = None):
     """
@@ -74,29 +148,37 @@ def _get_package_dependencies(ctx, package_name, package_version = None):
     # Remove the original package from this list.
     return [name for name in deps_names if name != package_name]
 
-def _setup_package(ctx, package_name, package_uri, package_deps = []):
+def _setup_package(ctx, package_name, package_uri, package_list = []):
     # Construct a bunch of names and paths from each package URI.
     uri_filename, uri_name, uri_version, uri_arch = _get_package_uri_props(package_uri)
 
-    uri_sha256 = _get_package_sha256(ctx, uri_name, uri_version)
-    uri_deb_path = "{}/{}".format(package_name, uri_filename)
-    uri_data_path = "{}/{}".format(package_name, "data.tar.xz")
+    sha256 = _get_package_sha256(ctx, uri_name, uri_version)
+    deb_path = "{}/{}".format(package_name, uri_filename)
+    data_path = "{}/{}".format(package_name, "data.tar.xz")
+    control_path = "{}/{}".format(package_name, "control.tar.xz")
 
     # Download the actual debian file from the APT repository.
-    download_result = ctx.download(package_uri, uri_deb_path, sha256 = uri_sha256)
+    download_result = ctx.download(package_uri, deb_path, sha256 = sha256)
     if not download_result.success:
         fail("Failed to download deb '{}'".format(package_uri))
 
-    # Unpack the data component of the debian file.
+    # Unpack the data and control components of the debian file.
     unpack_result = ctx.execute(
-        ["ar", "x", uri_filename, "data.tar.xz"],
+        ["ar", "x", uri_filename, "data.tar.xz", "control.tar.xz"],
         working_directory = package_name,
     )
     if unpack_result.return_code:
         fail("Unable to unpack 'data.tar.xz' from deb '{}'".format(uri_filename))
 
-    # Extract the data component into the local directory.
-    extract_result = ctx.extract(uri_data_path, output = package_name, stripPrefix = "")
+    # Extract the components into the local directory.
+    ctx.extract(data_path, output = package_name, stripPrefix = "")
+    ctx.extract(control_path, output = package_name, stripPrefix = "")
+
+    # Use the control file to figure out the relevant dependencies of this package.
+    # Only include dependencies that are being installed as part of this archive target.
+    control = ctx.read("{}/{}".format(package_name, "control"))
+    control_deps = _get_control_depends(control)
+    package_deps = [dep for dep in control_deps if dep in package_list]
 
     # Add the content of these packages to a library directive.
     buildfile = """
@@ -166,14 +248,7 @@ def _deb_archive_impl(ctx):
 
     # Create repository rules for each package.
     for package_name, package_info in packages.items():
-        # Get all possible deps for this particular package.
-        package_deps = _get_package_dependencies(ctx, package_name, package_info["version"])
-
-        # Remove deps that are not included in this package list.
-        package_deps = [name for name in package_deps if name in packages]
-
-        # Create the actual repository rule.
-        _setup_package(ctx, package_name, package_info["uri"], package_deps)
+        _setup_package(ctx, package_name, package_info["uri"], packages.keys())
 
 deb_archive = repository_rule(
     implementation = _deb_archive_impl,
