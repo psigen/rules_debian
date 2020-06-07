@@ -120,7 +120,6 @@ cc_library(
         package_name = package_name,
         cc_deps = ",".join(["\"//{}:cc\"".format(dep) for dep in package_deps]),
     )
-    # TODO: insert deps here.
 
     # Create the final buildfile including all the aggregated package rules.
     ctx.file("{}/BUILD".format(package_name), buildfile, executable = False)
