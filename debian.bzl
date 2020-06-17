@@ -315,3 +315,68 @@ deb_package = repository_rule(
     },
     doc = "Makes available a set of debian packages for use in builds.",
 )
+
+def construct_package_url(base_url, dist, arch, sha256):
+    """
+    Construct a package URL for a debian package using the 'by-hash' path.
+
+    See: https://wiki.debian.org/DebianRepository/Format#indices_acquisition_via_hashsums_.28by-hash.29
+    Example: http://us.archive.ubuntu.com/ubuntu/dists/bionic/by-hash/SHA256/
+    """
+    return "{base_url}/dists/{dist}/binary-{arch}/by-hash/SHA256/{sha256}".format(
+        base_url = base_url,
+        dist = dist,
+        arch = arch,
+        sha256 = sha256,
+    )
+
+def _deb_packages_impl(ctx):
+    """
+    Create a bazel repository for a group of debian packages as a single target.
+    """
+    for package_name, package_sha256 in ctx.attr.packages.items():
+        package_urls = [
+            construct_package_url(
+                base_url,
+                ctx.attr.dist,
+                ctx.attr.arch,
+                package_sha256,
+            )
+            for base_url in ctx.attr.urls
+        ]
+        _setup_package(
+            ctx,
+            package_name,
+            package_name,  # Use package_name as desired output directory.
+            package_urls,
+            [],  # No dependencies specified.
+            package_sha256,
+            ctx.attr.export_cc,
+        )
+
+deb_packages = repository_rule(
+    implementation = _deb_packages_impl,
+    attrs = {
+        "dist": attr.string(
+            mandatory = True,
+            doc = "Name of the distribution to use in the APT repositories",
+        ),
+        "arch": attr.string(
+            mandatory = True,
+            doc = "Name of the architecture to use in the APT repositories",
+        ),
+        "urls": attr.string_list(
+            mandatory = True,
+            doc = "List of base URLs for APT repositories to try using",
+        ),
+        "packages": attr.string_dict(
+            mandatory = True,
+            doc = "List of debian packages and SHA256 checksums for each",
+        ),
+        "export_cc": attr.bool(
+            default = True,
+            doc = "Export a cc_library target for this group",
+        ),
+    },
+    doc = "Makes available a set of debian packages for use in builds.",
+)
