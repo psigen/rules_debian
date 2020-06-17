@@ -342,7 +342,7 @@ def _deb_packages_impl(ctx):
                 ctx.attr.arch,
                 package_sha256,
             )
-            for base_url in ctx.attr.urls
+            for base_url in ctx.attr.mirrors
         ]
         _setup_package(
             ctx,
@@ -365,7 +365,7 @@ deb_packages = repository_rule(
             mandatory = True,
             doc = "Name of the architecture to use in the APT repositories",
         ),
-        "urls": attr.string_list(
+        "mirrors": attr.string_list(
             mandatory = True,
             doc = "List of base URLs for APT repositories to try using",
         ),

@@ -34,9 +34,9 @@ deb_packages(
     name = "boost",
     arch = "x86_64",
     dist = "bionic",
+    mirrors = ["http://us.archive.ubuntu.com/ubuntu/"],
     packages = {
         "libboost1.65-dev": "bec8082fb8e219d54676d59f0ad468452f2d63f01878acb2fe7228085b33c011",
         "libboost-system1.65.1": "390e93c275504a03101de7e35d898f224dff2594ff802dcc83a936b5fca690cc",
     },
-    urls = ["http://us.archive.ubuntu.com/ubuntu/"],
 )

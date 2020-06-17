@@ -3,6 +3,12 @@
 Bazel rules to manage installation and integration of `.deb` archives from
 Debian APT repositories.
 
+Note: It isn't necessary to create a mapping for debian packages since all
+allowable package names fall into a subset of allowable bazel target names:
+
+- https://docs.bazel.build/versions/master/build-ref.html#lexi
+- https://www.debian.org/doc/manuals/debian-reference/ch02.en.html#_debian_package_file_names
+
 ## deb_archive
 
 **In your `WORKSPACE`**
