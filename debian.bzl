@@ -169,7 +169,7 @@ def _get_package_dependencies(ctx, package_name, package_version = None):
     # Remove the original package from this list.
     return [name for name in deps_names if name != package_name]
 
-def _setup_package(ctx, package_name, package_path, package_uri, package_list, package_sha256, export_cc):
+def _download_package(ctx, package_name, package_path, package_uri, package_sha256):
     # Construct a bunch of names and paths from each package URI.
     deb_filename = "{}.deb".format(package_name)
     deb_path = "{}/{}".format(package_path, deb_filename)
@@ -193,6 +193,7 @@ def _setup_package(ctx, package_name, package_path, package_uri, package_list, p
     ctx.extract(data_path, output = package_path, stripPrefix = "")
     ctx.extract(control_path, output = package_path, stripPrefix = "")
 
+def _setup_package(ctx, package_name, package_path, package_list, export_cc):
     # Use the control file to figure out the relevant dependencies of this package.
     # Only include dependencies that are being installed as part of this archive target.
     control = ctx.read("{}/{}".format(package_path, "control"))
@@ -255,15 +256,23 @@ def _deb_archive_impl(ctx):
             "sha256": uri_sha256,
         }
 
+    # Download each package.
+    for package_name, package_info in packages.items():
+        _download_package(
+            ctx,
+            package_name,
+            package_name,  # Also use package name for local subpath.
+            package_info["uri"],
+            package_info["sha256"],
+        )
+
     # Create repository rules for each package.
     for package_name, package_info in packages.items():
         _setup_package(
             ctx,
             package_name,
             package_name,  # Also use package name for local subpath.
-            package_info["uri"],
             packages.keys(),
-            package_info["sha256"],
             ctx.attr.export_cc,
         )
 
@@ -287,13 +296,18 @@ def _deb_package_impl(ctx):
     """
     Create a bazel repository for a single debian package.
     """
-    _setup_package(
+    _download_package(
         ctx,
         ctx.name,
         ".",  # Use local directory as desired output directory.
         ctx.attr.urls,
-        [],  # No dependencies specified.
         ctx.attr.sha256,
+    )
+    _setup_package(
+        ctx,
+        ctx.name,
+        ".",  # Use local directory as desired output directory.
+        [],  # No dependencies specified.
         ctx.attr.export_cc,
     )
 
@@ -344,13 +358,18 @@ def _deb_packages_impl(ctx):
             )
             for base_url in ctx.attr.mirrors
         ]
-        _setup_package(
+        _download_package(
             ctx,
             package_name,
             package_name,  # Use package_name as desired output directory.
             package_urls,
-            [],  # No dependencies specified.
             package_sha256,
+        )
+        _setup_package(
+            ctx,
+            package_name,
+            package_name,  # Use package_name as desired output directory.
+            [],  # No dependencies specified.
             ctx.attr.export_cc,
         )
 
