@@ -5,11 +5,27 @@ local_repository(
     path = "../",
 )
 
-load("@rules_debian//:debian.bzl", "deb_archive")
+load("@rules_debian//:debian.bzl", "deb_archive", "deb_package")
 
 deb_archive(
     name = "org_boost",
     packages = {
         "libboost-system-dev": "*",
     },
+)
+
+deb_package(
+    name = "boost-dev",
+    sha256 = "bec8082fb8e219d54676d59f0ad468452f2d63f01878acb2fe7228085b33c011",
+    urls = [
+        "http://us.archive.ubuntu.com/ubuntu/pool/main/b/boost1.65.1/libboost1.65-dev_1.65.1+dfsg-0ubuntu5_amd64.deb",
+    ],
+)
+
+deb_package(
+    name = "boost-system",
+    sha256 = "390e93c275504a03101de7e35d898f224dff2594ff802dcc83a936b5fca690cc",
+    urls = [
+        "http://us.archive.ubuntu.com/ubuntu/pool/main/b/boost1.65.1/libboost-system1.65.1_1.65.1+dfsg-0ubuntu5_amd64.deb",
+    ],
 )

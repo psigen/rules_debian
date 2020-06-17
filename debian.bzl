@@ -169,35 +169,33 @@ def _get_package_dependencies(ctx, package_name, package_version = None):
     # Remove the original package from this list.
     return [name for name in deps_names if name != package_name]
 
-def _setup_package(ctx, package_name, package_uri, package_list, export_cc):
+def _setup_package(ctx, package_name, package_path, package_uri, package_list, package_sha256, export_cc):
     # Construct a bunch of names and paths from each package URI.
-    uri_filename, uri_name, uri_version, uri_arch = _get_package_uri_props(package_uri)
-
-    sha256 = _get_package_sha256(ctx, uri_name, uri_version)
-    deb_path = "{}/{}".format(package_name, uri_filename)
-    data_path = "{}/{}".format(package_name, "data.tar.xz")
-    control_path = "{}/{}".format(package_name, "control.tar.xz")
+    deb_filename = "{}.deb".format(package_name)
+    deb_path = "{}/{}".format(package_path, deb_filename)
+    data_path = "{}/{}".format(package_path, "data.tar.xz")
+    control_path = "{}/{}".format(package_path, "control.tar.xz")
 
     # Download the actual debian file from the APT repository.
-    download_result = ctx.download(package_uri, deb_path, sha256 = sha256)
+    download_result = ctx.download(package_uri, deb_path, sha256 = package_sha256)
     if not download_result.success:
-        fail("Failed to download deb '{}'".format(package_uri))
+        fail("Failed to download deb from '{}'".format(package_uri))
 
     # Unpack the data and control components of the debian file.
     unpack_result = ctx.execute(
-        ["ar", "x", uri_filename, "data.tar.xz", "control.tar.xz"],
-        working_directory = package_name,
+        ["ar", "x", deb_filename, "data.tar.xz", "control.tar.xz"],
+        working_directory = package_path,
     )
     if unpack_result.return_code:
-        fail("Unable to unpack 'data.tar.xz' from deb '{}'".format(uri_filename))
+        fail("Unable to unpack 'data.tar.xz' from deb '{}'".format(deb_filename))
 
     # Extract the components into the local directory.
-    ctx.extract(data_path, output = package_name, stripPrefix = "")
-    ctx.extract(control_path, output = package_name, stripPrefix = "")
+    ctx.extract(data_path, output = package_path, stripPrefix = "")
+    ctx.extract(control_path, output = package_path, stripPrefix = "")
 
     # Use the control file to figure out the relevant dependencies of this package.
     # Only include dependencies that are being installed as part of this archive target.
-    control = ctx.read("{}/{}".format(package_name, "control"))
+    control = ctx.read("{}/{}".format(package_path, "control"))
     control_deps = _get_control_depends(control)
     package_deps = [dep for dep in control_deps if dep in package_list]
 
@@ -209,13 +207,17 @@ def _setup_package(ctx, package_name, package_uri, package_list, export_cc):
         )
 
     # Create the final buildfile including all the aggregated package rules.
-    ctx.file("{}/BUILD".format(package_name), buildfile, executable = False)
+    ctx.file("{}/BUILD".format(package_path), buildfile, executable = False)
 
 def _deb_archive_impl(ctx):
-    # Compile the full list of packages that need to be retrieved.
-    # For each package, assemble a dependency tree of some kind.
-    # Convert each package into a repository rule?
-    # Export cc_library for each package.
+    """
+    Create a bazel repository for a group of debian packages.
+
+    Compile the full list of packages that need to be retrieved.
+    For each package, assemble a dependency tree of some kind.
+    Convert each package into a repository rule?
+    Export cc_library for each package.
+    """
 
     # Create a header for the root buildfile for this repository.
     root_buildfile = """
@@ -244,11 +246,13 @@ def _deb_archive_impl(ctx):
     packages = {}
     for uri in uris:
         uri_filename, uri_name, uri_version, uri_arch = _get_package_uri_props(uri)
+        uri_sha256 = _get_package_sha256(ctx, uri_name, uri_version)
         packages[uri_name] = {
             "uri": uri,
             "filename": uri_filename,
             "version": uri_version,
             "arch": uri_arch,
+            "sha256": uri_sha256,
         }
 
     # Create repository rules for each package.
@@ -256,8 +260,10 @@ def _deb_archive_impl(ctx):
         _setup_package(
             ctx,
             package_name,
+            package_name,  # Also use package name for local subpath.
             package_info["uri"],
             packages.keys(),
+            package_info["sha256"],
             ctx.attr.export_cc,
         )
 
@@ -273,6 +279,39 @@ deb_archive = repository_rule(
             doc = "Export a cc_library target for each package",
         ),
         "strict_visibility": attr.bool(default = False),
+    },
+    doc = "Makes available a set of debian packages for use in builds.",
+)
+
+def _deb_package_impl(ctx):
+    """
+    Create a bazel repository for a single debian package.
+    """
+    _setup_package(
+        ctx,
+        ctx.name,
+        ".",  # Use local directory as desired output directory.
+        ctx.attr.urls,
+        [],  # No dependencies specified.
+        ctx.attr.sha256,
+        ctx.attr.export_cc,
+    )
+
+deb_package = repository_rule(
+    implementation = _deb_package_impl,
+    attrs = {
+        "urls": attr.string_list(
+            mandatory = True,
+            doc = "List of URLs to retrieve the specific debian package of interest",
+        ),
+        "sha256": attr.string(
+            mandatory = True,
+            doc = "SHA256 checksum for this specific package",
+        ),
+        "export_cc": attr.bool(
+            default = True,
+            doc = "Export a cc_library target for this package",
+        ),
     },
     doc = "Makes available a set of debian packages for use in builds.",
 )
