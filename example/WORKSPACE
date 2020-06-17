@@ -1,0 +1,15 @@
+workspace(name = "com_github_psigen_rules_debian_example")
+
+local_repository(
+    name = "rules_debian",
+    path = "../",
+)
+
+load("@rules_debian//:debian.bzl", "deb_archive")
+
+deb_archive(
+    name = "org_boost",
+    packages = {
+        "libboost-system-dev": "*",
+    },
+)

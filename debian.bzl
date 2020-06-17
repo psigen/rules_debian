@@ -2,6 +2,27 @@
 Repository rules for interacting with debian repositories.
 """
 
+BUILDFILE_BASE = """
+filegroup(
+    name = "files",
+    srcs = glob([
+        "usr/**/*"
+    ]),
+    visibility = ["//visibility:public"],
+)
+"""
+
+BUILDFILE_CC = """
+cc_library(
+    name = "cc",
+    hdrs = glob(["usr/include/**/*"]),
+    srcs = glob(["usr/lib/**/*"]),
+    strip_include_prefix = "usr/include",
+    visibility = ["//visibility:public"],
+    deps = [{cc_deps}],
+)
+"""
+
 def _get_package_uri_props(package_uri):
     """
     Gets the properties of a debian package from its URI.
@@ -148,7 +169,7 @@ def _get_package_dependencies(ctx, package_name, package_version = None):
     # Remove the original package from this list.
     return [name for name in deps_names if name != package_name]
 
-def _setup_package(ctx, package_name, package_uri, package_list = []):
+def _setup_package(ctx, package_name, package_uri, package_list, export_cc):
     # Construct a bunch of names and paths from each package URI.
     uri_filename, uri_name, uri_version, uri_arch = _get_package_uri_props(package_uri)
 
@@ -181,27 +202,11 @@ def _setup_package(ctx, package_name, package_uri, package_list = []):
     package_deps = [dep for dep in control_deps if dep in package_list]
 
     # Add the content of these packages to a library directive.
-    buildfile = """
-filegroup(
-    name = "files",
-    srcs = glob([
-        "usr/**/*"
-    ]),
-    visibility = ["//visibility:public"],
-)
-
-cc_library(
-    name = "cc",
-    hdrs = glob(["usr/include/**/*"]),
-    srcs = glob(["usr/lib/**/*"]),
-    strip_include_prefix = "usr/include",
-    visibility = ["//visibility:public"],
-    deps = [{cc_deps}],
-)
-    """.format(
-        package_name = package_name,
-        cc_deps = ",".join(["\"//{}:cc\"".format(dep) for dep in package_deps]),
-    )
+    buildfile = BUILDFILE_BASE
+    if (export_cc):
+        buildfile += BUILDFILE_CC.format(
+            cc_deps = ", ".join(["\"//{}:cc\"".format(dep) for dep in package_deps]),
+        )
 
     # Create the final buildfile including all the aggregated package rules.
     ctx.file("{}/BUILD".format(package_name), buildfile, executable = False)
@@ -248,7 +253,13 @@ def _deb_archive_impl(ctx):
 
     # Create repository rules for each package.
     for package_name, package_info in packages.items():
-        _setup_package(ctx, package_name, package_info["uri"], packages.keys())
+        _setup_package(
+            ctx,
+            package_name,
+            package_info["uri"],
+            packages.keys(),
+            ctx.attr.export_cc,
+        )
 
 deb_archive = repository_rule(
     implementation = _deb_archive_impl,
@@ -256,6 +267,10 @@ deb_archive = repository_rule(
         "packages": attr.string_dict(
             mandatory = True,
             doc = "List of debian packages and versions to use",
+        ),
+        "export_cc": attr.bool(
+            default = True,
+            doc = "Export a cc_library target for each package",
         ),
         "strict_visibility": attr.bool(default = False),
     },
