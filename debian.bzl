@@ -359,19 +359,19 @@ deb_packages = repository_rule(
     attrs = {
         "dist": attr.string(
             mandatory = True,
-            doc = "Name of the distribution to use in the APT repositories",
+            doc = "Distribution to use in the APT repositories (e.g. 'bionic')",
         ),
         "arch": attr.string(
-            mandatory = True,
-            doc = "Name of the architecture to use in the APT repositories",
+            default = "x86_64",
+            doc = "Architecture of the packages to retrieve (default: x86_64)",
         ),
         "mirrors": attr.string_list(
             mandatory = True,
-            doc = "List of base URLs for APT repositories to try using",
+            doc = "List of base URLs for APT repository mirrors",
         ),
         "packages": attr.string_dict(
             mandatory = True,
-            doc = "List of debian packages and SHA256 checksums for each",
+            doc = "Dict from debian package names to SHA256 checksums",
         ),
         "export_cc": attr.bool(
             default = True,

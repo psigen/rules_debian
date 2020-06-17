@@ -32,7 +32,6 @@ deb_package(
 
 deb_packages(
     name = "boost",
-    arch = "x86_64",
     dist = "bionic",
     mirrors = ["http://us.archive.ubuntu.com/ubuntu/"],
     packages = {
