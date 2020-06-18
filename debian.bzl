@@ -60,9 +60,9 @@ def _get_package_sha256(ctx, package_name, package_version = None):
 
     fail("Unable to find a package SHA256 for {}".format(package_query))
 
-def _get_control_fields(control):
+def _parse_control_fields(control):
     """
-    Gets a dict of field entries from a debian control file.
+    Parse a dict of field entries from a debian control file.
 
     References:
         https://www.debian.org/doc/debian-policy/ch-controlfields.html#s-controlsyntax
@@ -86,12 +86,12 @@ def _get_control_fields(control):
         if line.startswith(" ") or line.startswith("\t"):
             if not field_name:
                 fail("Unexpected folded line in control file: line {}".format(idx))
-            field_content += line
+            field_content += line.lstrip()
             continue
 
         # If this is a new field, finish the previous field before starting this one.
         if field_name:
-            fields[field_name] = field_content
+            fields[field_name] = field_content.strip()
 
         # If this is a blank line, move to the next one.
         if not line.strip():
@@ -102,21 +102,20 @@ def _get_control_fields(control):
 
     return fields
 
-def _get_control_depends(control):
+def _parse_control_depends(fields):
     """
-    Gets the package names of the 'Depends:' directive in a debian control file.
+    Parse the package names of the 'Depends:' directive in a debian control file.
 
     References:
         https://www.debian.org/doc/debian-policy/ch-controlfields.html#s-controlsyntax
         https://www.debian.org/doc/debian-policy/ch-relationships.html#declaring-relationships-between-packages
 
     Args:
-        control: the string content of a debian control file.
+        fields: a parsed map of field strings from a debian control file.
     Returns:
         A list of package names from the control file Depends directive.
     """
     depends = []
-    fields = _get_control_fields(control)
 
     for entry in [fields.get("Depends", None), fields.get("Pre-Depends", None)]:
         # Skip the fields if they were empty.
@@ -193,11 +192,16 @@ def _download_package(ctx, package_name, package_path, package_uri, package_sha2
     ctx.extract(data_path, output = package_path, stripPrefix = "")
     ctx.extract(control_path, output = package_path, stripPrefix = "")
 
+    # Return the control parameters for this package.
+    control = ctx.read("{}/{}".format(package_path, "control"))
+    return _parse_control_fields(control)
+
 def _setup_package(ctx, package_name, package_path, package_list, export_cc):
     # Use the control file to figure out the relevant dependencies of this package.
     # Only include dependencies that are being installed as part of this archive target.
     control = ctx.read("{}/{}".format(package_path, "control"))
-    control_deps = _get_control_depends(control)
+    control_fields = _parse_control_fields(control)
+    control_deps = _parse_control_depends(control_fields)
     package_deps = [dep for dep in control_deps if dep in package_list]
 
     # Add the content of these packages to a library directive.
@@ -258,13 +262,20 @@ def _deb_archive_impl(ctx):
 
     # Download each package.
     for package_name, package_info in packages.items():
-        _download_package(
+        control_fields = _download_package(
             ctx,
             package_name,
             package_name,  # Also use package name for local subpath.
             package_info["uri"],
             package_info["sha256"],
         )
+
+        # Check that the specified name matched the one in the control file.
+        if control_fields["Package"] != package_name:
+            fail("Package name '{}' did not match downloaded control file '{}'.".format(
+                package_name,
+                control_fields["Package"],
+            ))
 
     # Create repository rules for each package.
     for package_name, package_info in packages.items():
@@ -349,6 +360,7 @@ def _deb_packages_impl(ctx):
     Create a bazel repository for a group of debian packages as a single target.
     """
     for package_name, package_sha256 in ctx.attr.packages.items():
+        # Construct an array of full URLs for this particular package from each mirror.
         package_urls = [
             construct_package_url(
                 base_url,
@@ -358,18 +370,30 @@ def _deb_packages_impl(ctx):
             )
             for base_url in ctx.attr.mirrors
         ]
-        _download_package(
+
+        # Download and extract this package and return the control fields.
+        control_fields = _download_package(
             ctx,
             package_name,
             package_name,  # Use package_name as desired output directory.
             package_urls,
             package_sha256,
         )
+
+        # Check that the specified name matched the one in the control file.
+        if control_fields["Package"] != package_name:
+            fail("Package name '{}' did not match downloaded control file '{}'.".format(
+                package_name,
+                control_fields["Package"],
+            ))
+
+        # Create a bazel package around this debian package.
+        # This generates usable targets that can be consumed by bazel.
         _setup_package(
             ctx,
             package_name,
             package_name,  # Use package_name as desired output directory.
-            [],  # No dependencies specified.
+            ctx.attr.packages.keys(),
             ctx.attr.export_cc,
         )
 

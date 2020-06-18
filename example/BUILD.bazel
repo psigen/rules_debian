@@ -21,7 +21,6 @@ cc_binary(
     name = "example3",
     srcs = ["example.cpp"],
     deps = [
-        "@boost//libboost-system1.65.1:cc",
-        "@boost//libboost1.65-dev:cc",
+        "@boost//libboost-system1.65-dev:cc",
     ],
 )
