@@ -196,7 +196,7 @@ def _download_package(ctx, package_name, package_path, package_uri, package_sha2
     control = ctx.read("{}/{}".format(package_path, "control"))
     return _parse_control_fields(control)
 
-def _setup_package(ctx, package_name, package_path, package_list, export_cc):
+def _setup_package(ctx, package_name, package_path, package_list, export_cc, build_file_content = None):
     # Use the control file to figure out the relevant dependencies of this package.
     # Only include dependencies that are being installed as part of this archive target.
     control = ctx.read("{}/{}".format(package_path, "control"))
@@ -206,10 +206,14 @@ def _setup_package(ctx, package_name, package_path, package_list, export_cc):
 
     # Add the content of these packages to a library directive.
     buildfile = BUILDFILE_BASE
-    if (export_cc):
+    if export_cc:
+        if build_file_content:
+            fail("Can't use export_cc and build_file_content at the same time")
         buildfile += BUILDFILE_CC.format(
             cc_deps = ", ".join(["\"//{}:cc\"".format(dep) for dep in package_deps]),
         )
+    elif build_file_content:
+        buildfile = build_file_content
 
     # Create the final buildfile including all the aggregated package rules.
     ctx.file("{}/BUILD".format(package_path), buildfile, executable = False)
@@ -320,6 +324,7 @@ def _deb_package_impl(ctx):
         ".",  # Use local directory as desired output directory.
         [],  # No dependencies specified.
         ctx.attr.export_cc,
+        ctx.attr.build_file_content,
     )
 
 deb_package = repository_rule(
@@ -336,6 +341,10 @@ deb_package = repository_rule(
         "export_cc": attr.bool(
             default = True,
             doc = "Export a cc_library target for this package",
+        ),
+        "build_file_content": attr.string(
+            mandatory = False,
+            doc = "BUILD file content to use; can't be combined with export_cc option",
         ),
     },
     doc = "Makes available a set of debian packages for use in builds.",
