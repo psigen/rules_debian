@@ -196,7 +196,7 @@ def _download_package(ctx, package_name, package_path, package_uri, package_sha2
     control = ctx.read("{}/{}".format(package_path, "control"))
     return _parse_control_fields(control)
 
-def _setup_package(ctx, package_name, package_path, package_list, export_cc, build_file_content = None):
+def _setup_package(ctx, package_name, package_path, package_list, export_cc, build_file_content = None, build_file = None):
     # Use the control file to figure out the relevant dependencies of this package.
     # Only include dependencies that are being installed as part of this archive target.
     control = ctx.read("{}/{}".format(package_path, "control"))
@@ -205,18 +205,22 @@ def _setup_package(ctx, package_name, package_path, package_list, export_cc, bui
     package_deps = [dep for dep in control_deps if dep in package_list]
 
     # Add the content of these packages to a library directive.
-    buildfile = BUILDFILE_BASE
+    buildfile_out = BUILDFILE_BASE
     if export_cc:
-        if build_file_content:
-            fail("Can't use export_cc and build_file_content at the same time")
-        buildfile += BUILDFILE_CC.format(
+        if build_file or build_file_content:
+            fail("Can't use export_cc and build_file or build_file_content at the same time")
+        buildfile_out += BUILDFILE_CC.format(
             cc_deps = ", ".join(["\"//{}:cc\"".format(dep) for dep in package_deps]),
         )
     elif build_file_content:
-        buildfile = build_file_content
+        buildfile_out = build_file_content
+    elif build_file:
+        buildfile_out = None
+        ctx.symlink(build_file, "BUILD.bazel")
 
-    # Create the final buildfile including all the aggregated package rules.
-    ctx.file("{}/BUILD".format(package_path), buildfile, executable = False)
+    # Unless a custom BUILD file was provided, create the final buildfile including all the aggregated package rules.
+    if buildfile_out:
+        ctx.file("{}/BUILD.bazel".format(package_path), buildfile_out, executable = False)
 
 def _deb_archive_impl(ctx):
     """
@@ -325,6 +329,7 @@ def _deb_package_impl(ctx):
         [],  # No dependencies specified.
         ctx.attr.export_cc,
         ctx.attr.build_file_content,
+        ctx.attr.build_file,
     )
 
 deb_package = repository_rule(
@@ -345,6 +350,10 @@ deb_package = repository_rule(
         "build_file_content": attr.string(
             mandatory = False,
             doc = "BUILD file content to use; can't be combined with export_cc option",
+        ),
+        "build_file": attr.label(
+            mandatory = False,
+            doc = "BUILD file to use; can't be combined with export_cc option",
         ),
     },
     doc = "Makes available a set of debian packages for use in builds.",
