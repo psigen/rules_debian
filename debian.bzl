@@ -205,24 +205,27 @@ def _setup_package(ctx, package_name, package_path, package_list, export_cc, bui
     package_deps = [dep for dep in control_deps if dep in package_list]
 
     # Add the content of these packages to a library directive.
-    buildfile_out = BUILDFILE_BASE
-    if export_cc:
-        if build_file or build_file_content:
-            fail("Can't use 'export_cc' and 'build_file' or 'build_file_content' at the same time")
-        buildfile_out += BUILDFILE_CC.format(
-            cc_deps = ", ".join(["\"//{}:cc\"".format(dep) for dep in package_deps]),
-        )
-    elif build_file_content:
-        if build_file:
-            fail("Can't use 'build_file_content' and 'build_file' at the same time")
-        buildfile_out = build_file_content
-    elif build_file:
-        buildfile_out = None
-        ctx.symlink(build_file, "BUILD.bazel")
+    if build_file:
+        # Use the specified build file for the build.
+        if build_file_content or export_cc:
+            fail("Can't use 'build_file' and 'build_file_content' or 'export_cc' at the same time")
+        ctx.symlink(build_file, "{}/BUILD.bazel".format(package_path))
+    else:
+        # If the buildfile was not provided, we will create one here.
+        if build_file_content:
+            # Statically generate the contents of the buildfile from specified content.
+            if export_cc:
+                fail("Can't use build_file_content and export_cc at the same time")
+        else:
+            # Dynamically generate the contents of the buildfile from the export flags.
+            build_file_content = BUILDFILE_BASE
+            if export_cc:
+                build_file_content += BUILDFILE_CC.format(
+                    cc_deps = ", ".join(["\"//{}:cc\"".format(dep) for dep in package_deps]),
+                )
 
-    # Unless a custom BUILD file was provided, create the final buildfile including all the aggregated package rules.
-    if buildfile_out:
-        ctx.file("{}/BUILD.bazel".format(package_path), buildfile_out, executable = False)
+        # Create a file containing the custom buildfile content.
+        ctx.file("{}/BUILD.bazel".format(package_path), build_file_content, executable = False)
 
 def _deb_archive_impl(ctx):
     """
