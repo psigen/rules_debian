@@ -208,11 +208,13 @@ def _setup_package(ctx, package_name, package_path, package_list, export_cc, bui
     buildfile_out = BUILDFILE_BASE
     if export_cc:
         if build_file or build_file_content:
-            fail("Can't use export_cc and build_file or build_file_content at the same time")
+            fail("Can't use 'export_cc' and 'build_file' or 'build_file_content' at the same time")
         buildfile_out += BUILDFILE_CC.format(
             cc_deps = ", ".join(["\"//{}:cc\"".format(dep) for dep in package_deps]),
         )
     elif build_file_content:
+        if build_file:
+            fail("Can't use 'build_file_content' and 'build_file' at the same time")
         buildfile_out = build_file_content
     elif build_file:
         buildfile_out = None
