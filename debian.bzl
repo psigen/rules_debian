@@ -172,21 +172,28 @@ def _download_package(ctx, package_name, package_path, package_uri, package_sha2
     # Construct a bunch of names and paths from each package URI.
     deb_filename = "{}.deb".format(package_name)
     deb_path = "{}/{}".format(package_path, deb_filename)
-    data_path = "{}/{}".format(package_path, "data.tar.xz")
-    control_path = "{}/{}".format(package_path, "control.tar.xz")
 
     # Download the actual debian file from the APT repository.
     download_result = ctx.download(package_uri, deb_path, sha256 = package_sha256)
     if not download_result.success:
         fail("Failed to download deb from '{}'".format(package_uri))
 
+    # Find out what the data and control archives are called (could be data.tar.xz or data.tar.zst)
+    dir_list = ctx.execute(["ar", "t", deb_filename], working_directory = package_path)
+    if dir_list.return_code:
+        fail("Can't list archive contents of " + deb_filename)
+    data_file = [f for f in dir_list.stdout.splitlines() if f.startswith("data.")][0]
+    control_file = [f for f in dir_list.stdout.splitlines() if f.startswith("control.")][0]
+    data_path = "{}/{}".format(package_path, data_file)
+    control_path = "{}/{}".format(package_path, control_file)
+
     # Unpack the data and control components of the debian file.
     unpack_result = ctx.execute(
-        ["ar", "x", deb_filename, "data.tar.xz", "control.tar.xz"],
+        ["ar", "x", deb_filename, data_file, control_file],
         working_directory = package_path,
     )
     if unpack_result.return_code:
-        fail("Unable to unpack 'data.tar.xz' from deb '{}'".format(deb_filename))
+        fail("Unable to unpack '{}' from deb '{}'".format(data_file, deb_filename))
 
     # Extract the components into the local directory.
     ctx.extract(data_path, output = package_path, stripPrefix = "")
