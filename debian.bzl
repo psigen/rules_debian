@@ -204,7 +204,7 @@ def _download_package(ctx, package_name, package_path, package_uri, package_sha2
         working_directory = package_path,
     )
     if unpack_result.return_code:
-        fail("Unable to unpack 'data.tar.xz' from deb '{}'".format(deb_filename))
+        fail("Unable to unpack '{}' from deb '{}'".format(data_archive, deb_filename))
 
     # Extract the components into the local directory.
     ctx.extract(data_path, output = package_path, stripPrefix = "")
