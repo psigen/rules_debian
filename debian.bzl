@@ -178,7 +178,7 @@ def _download_package(ctx, package_name, package_path, package_uri, package_sha2
     if not download_result.success:
         fail("Failed to download deb from '{}'".format(package_uri))
 
-    # determine type of archives in deb
+    # Find out what the data and control archives are called (could be data.tar.xz or data.tar.zst).
     list_contents_result = ctx.execute(
         ["ar", "t", deb_filename],
         working_directory = package_path,
