@@ -172,17 +172,35 @@ def _download_package(ctx, package_name, package_path, package_uri, package_sha2
     # Construct a bunch of names and paths from each package URI.
     deb_filename = "{}.deb".format(package_name)
     deb_path = "{}/{}".format(package_path, deb_filename)
-    data_path = "{}/{}".format(package_path, "data.tar.xz")
-    control_path = "{}/{}".format(package_path, "control.tar.xz")
 
     # Download the actual debian file from the APT repository.
     download_result = ctx.download(package_uri, deb_path, sha256 = package_sha256)
     if not download_result.success:
         fail("Failed to download deb from '{}'".format(package_uri))
 
+    # determine type of archives in deb
+    list_contents_result = ctx.execute(
+        ["ar", "t", deb_filename],
+        working_directory = package_path,
+    )
+    if list_contents_result.return_code:
+        fail("ar t " + deb_filename + " failed, cannot determine type of contents")
+    if "data.tar.xz" in list_contents_result.stdout:
+        extension = "xz"
+    elif "data.tar.zst" in list_contents_result.stdout:
+        extension = "zst"
+    else:
+        fail("unable to determine archive type")
+
+    data_archive = "data.tar." + extension
+    control_archive = "control.tar." + extension
+
+    data_path = "{}/{}".format(package_path, data_archive)
+    control_path = "{}/{}".format(package_path, control_archive)
+
     # Unpack the data and control components of the debian file.
     unpack_result = ctx.execute(
-        ["ar", "x", deb_filename, "data.tar.xz", "control.tar.xz"],
+        ["ar", "x", deb_filename, data_archive, control_archive],
         working_directory = package_path,
     )
     if unpack_result.return_code:
