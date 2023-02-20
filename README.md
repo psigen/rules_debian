@@ -15,7 +15,7 @@ allowable package names fall into a subset of allowable bazel target names:
 - [deb_package](#deb_package)
 - [deb_packages](#deb_packages)
 
-Check out some [examples](./examples).
+Check out some [examples](./example).
 
 ## deb_archive
 
